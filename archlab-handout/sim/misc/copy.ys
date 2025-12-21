@@ -1,0 +1,49 @@
+# 学号：2023010304
+# 姓名：李孙木铎
+
+# 前置调试信息
+    .pos 0
+    irmovq Stack, %rsp  # 初始化栈指针
+    call Main           # 调用主函数
+    halt                # 程序结束
+
+.align 8 
+src:
+    .quad 0x00a
+    .quad 0x0b0
+    .quad 0xc00
+dest: 
+    .quad 0x111 
+    .quad 0x222
+    .quad 0x333
+
+# 主函数
+Main:
+    irmovq $src, %rdi     # 将源地址传入 %rdi
+    irmovq $dest, %rsi    # 将目标地址传入 %rsi
+    irmovq $3, %rdx      # 将拷贝长度传入 %rdx
+    call copy_block       # 调用 copy_block 函数
+    ret                   # 返回
+
+copy_block:
+    irmovq $0, %rcx        # result = 0
+    irmovq $1, %r8         # prepare 1
+    irmovq $8, %r9         # prepare 8
+loop:
+    andq %rdx, %rdx        # while (len > 0)
+    jle end_loop
+    mrmovq (%rdi), %rax    # val = *src
+    rmmovq %rax, (%rsi)    # *dst = val
+    xorq %rax, %rcx        # result ^= val    
+    subq %r8, %rdx         # len--
+    addq %r9, %rsi         # dst++
+    addq %r9, %rdi         # src++
+    jmp loop
+end_loop:
+    rrmovq %rcx, %rax        # return result in rax
+    ret
+
+
+# 栈空间
+    .pos 0x200
+Stack:

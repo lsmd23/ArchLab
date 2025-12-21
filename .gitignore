@@ -10,6 +10,9 @@ sum.c
 ## task 2
 rsum.c
 rsum.s
+## task 3
+copy.s
+copy.c
 
 # pipe
 pipe-std.c
