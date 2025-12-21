@@ -15,7 +15,8 @@
 # %rdi = src, %rsi = dst, %rdx = len
 # Procedure registers info: 
 #  %rax - count of positive words
-#  %r10 - temp
+# Remaining registers available for use:
+#  %r8-%r14, %rbx
 ncopy:
 
 ##################################################################
@@ -23,39 +24,139 @@ ncopy:
 	# Loop header
 	xorq %rax,%rax		# count = 0;
 	# andq %rdx,%rdx		# len <= 0?
-	iaddq $-2, %rdx		# len >= 2?
-	# jle Done		# if so, goto Done:
-	jl Remainder       # if so, goto Remainder:
+	iaddq $-8, %rdx		# len -= 8
+	jl Remainder 	# if so, goto Remainder
 
 Loop:
-	# apply the loop unrolling optimization
-	mrmovq (%rdi), %r10		# read first val from src...
-	mrmovq 8(%rdi), %r11	# read second val from src...
-	rmmovq %r10, (%rsi)		# store first val to dst...
-	rmmovq %r11, 8(%rsi)	# store second val to dst...
-	andq %r10, %r10		# val1 <= 0?
+	# apply the loop unrolling optimization with factor 8
+	mrmovq (%rdi), %r8 		# read first val from src...
+	mrmovq 8(%rdi), %r9 	# read second val from src...
+	mrmovq 16(%rdi), %r10	# read third val from src...
+	mrmovq 24(%rdi), %r11	# read fourth val from src...
+	mrmovq 32(%rdi), %r12	# read fifth val from src...
+	mrmovq 40(%rdi), %r13	# read sixth val from src...
+	mrmovq 48(%rdi), %r14	# read seventh val from src...
+	mrmovq 56(%rdi), %rbx	# read eighth val from src...
+	rmmovq %r8, (%rsi) 		# ...store first to dst
+	rmmovq %r9, 8(%rsi) 	# ...store second to dst
+	rmmovq %r10, 16(%rsi)	# ...store third to dst
+	rmmovq %r11, 24(%rsi)	# ...store fourth to dst
+	rmmovq %r12, 32(%rsi)	# ...store fifth to dst
+	rmmovq %r13, 40(%rsi)	# ...store sixth to dst
+	rmmovq %r14, 48(%rsi)	# ...store seventh to dst
+	rmmovq %rbx, 56(%rsi)	# ...store eighth to dst
+	andq %r8, %r8		# val0 <= 0?
+	jle Npos0		# if so, goto Npos0:
+	iaddq $1, %rax 		# count++
+Npos0:
+	andq %r9, %r9		# val1 <= 0?
 	jle Npos1		# if so, goto Npos1:
 	iaddq $1, %rax 		# count++
 Npos1:
-    andq %r11, %r11		# val2 <= 0?
+	andq %r10, %r10		# val2 <= 0?
 	jle Npos2		# if so, goto Npos2:
 	iaddq $1, %rax 		# count++
 Npos2:
-	iaddq $-2, %rdx		# len-=2
-	iaddq $16, %rdi		# src+=2
-	iaddq $16, %rsi		# dst+=2
-	andq %rdx,%rdx		# len > 0?
-	jge Loop			# if so, goto Loop:
-Remainder:
-	# handle remaining elements, %rdx now is negative
-	iaddq $2, %rdx		# restore the real length
-	je Done		# if len == 0, goto Done:
-	# process the remaining one element
-	mrmovq (%rdi), %r10		# read val from src...
-	rmmovq %r10, (%rsi)		# store val to dst
-	andq %r10, %r10		# val <= 0?
-	jle Done		# if so, goto Done:
+	andq %r11, %r11		# val3 <= 0?
+	jle Npos3		# if so, goto Npos3:
 	iaddq $1, %rax 		# count++
+Npos3:
+	andq %r12, %r12		# val4 <= 0?
+	jle Npos4		# if so, goto Npos4:
+	iaddq $1, %rax 		# count++
+Npos4:
+	andq %r13, %r13		# val5 <= 0?
+	jle Npos5		# if so, goto Npos5:
+	iaddq $1, %rax 		# count++
+Npos5:
+	andq %r14, %r14		# val6 <= 0?
+	jle Npos6		# if so, goto Npos6:	
+	iaddq $1, %rax 		# count++
+Npos6:
+	andq %rbx, %rbx		# val7 <= 0?
+	jle Npos7		# if so, goto Npos7:
+	iaddq $1, %rax 		# count++
+Npos7:
+	# Loop update
+	iaddq $64, %rdi		# src += 8 * 8
+	iaddq $64, %rsi		# dst += 8 * 8
+	iaddq $-8, %rdx		# len -= 8 * 4
+	jge Loop		# if so, goto Loop:
+Remainder:
+	# handle remaining elements, %rdx now is a number between -8 and -1
+	iaddq $4, %rdx		# %rdx now is between -4 and 3
+	jge Rem_High
+
+Rem_Low: # handle 0 to 3 remaining elements
+	iaddq $2, %rdx		# %rdx now is between -2 to 1
+	jge Rem_2_3
+
+	# handle 0 to 1 remaining elements
+	iaddq $1, %rdx		# %rdx now is between -1 to 0
+	jge R1
+	ret
+
+Rem_2_3: # handle 2 to 3 remaining elements
+	iaddq $-1, %rdx		# %rdx now is between -1 to 0
+	jge R3
+	jmp R2
+
+Rem_High: # handle 4 to 7 remaining elements
+	iaddq $-2, %rdx		# %rdx now is between -2 to 1
+	jge Rem_6_7
+
+Rem_4_5: # handle 4 to 5 remaining elements
+	iaddq $1, %rdx		# %rdx now is between -1 to 0
+	jge R5
+	jmp R4
+
+Rem_6_7: # handle 6 to 7 remaining elements
+	iaddq $-1, %rdx		# %rdx now is between -1 to 0
+	jge R7
+	jmp R6
+
+R7: # handle 7th remaining element
+	mrmovq 48(%rdi), %r8
+	rmmovq %r8, 48(%rsi)
+	andq %r8, %r8
+	jle R6
+	iaddq $1, %rax
+R6: # handle 6th remaining element
+	mrmovq 40(%rdi), %r8
+	rmmovq %r8, 40(%rsi)
+	andq %r8, %r8
+	jle R5
+	iaddq $1, %rax
+R5: # handle 5th remaining element
+	mrmovq 32(%rdi), %r8
+	rmmovq %r8, 32(%rsi)
+	andq %r8, %r8
+	jle R4
+	iaddq $1, %rax
+R4: # handle 4th remaining element
+	mrmovq 24(%rdi), %r8
+	rmmovq %r8, 24(%rsi)
+	andq %r8, %r8
+	jle R3
+	iaddq $1, %rax
+R3: # handle 3rd remaining element
+	mrmovq 16(%rdi), %r8
+	rmmovq %r8, 16(%rsi)
+	andq %r8, %r8
+	jle R2
+	iaddq $1, %rax
+R2: # handle 2nd remaining element
+	mrmovq 8(%rdi), %r8
+	rmmovq %r8, 8(%rsi)
+	andq %r8, %r8	
+	jle R1
+	iaddq $1, %rax
+R1: # handle 1st remaining element
+	mrmovq (%rdi), %r8
+	rmmovq %r8, (%rsi)
+	andq %r8, %r8
+	jle Done
+	iaddq $1, %rax
 ##################################################################
 # Do not modify the following section of code
 # Function epilogue.
