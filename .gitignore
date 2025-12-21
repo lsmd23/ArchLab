@@ -3,6 +3,10 @@ hcl2c
 *.o
 yas
 yis
+*.yo
+## task 1
+sum.s
+sum.c
 
 # pipe
 pipe-std.c

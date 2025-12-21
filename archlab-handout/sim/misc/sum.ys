@@ -1,0 +1,43 @@
+# 学号：2023010304
+# 姓名：李孙木铎
+
+# 前置调试信息
+    .pos 0
+    irmovq Stack, %rsp  # 初始化栈指针
+    call Main           # 调用主函数
+    halt                # 程序结束
+
+    .align 8
+ele1:
+    .quad 0x00a
+    .quad ele2
+ele2:
+    .quad 0x0b0
+    .quad ele3
+ele3:
+    .quad 0xc00
+    .quad 0
+
+# 主函数
+Main:
+    irmovq $ele1, %rdi   # 将链表头地址传入 %rdi
+    call sum_list        # 调用 sum_list 函数
+    ret                  # 返回
+
+
+# 计算链表所有节点值的和
+sum_list:
+    xorq  %rax, %rax        # sum = 0
+loop:
+    andq  %rdi, %rdi        # while (ls)
+    je    loop_end          # if ls == NULL, jump out of loop
+    mrmovq (%rdi), %r10     # load ls->value
+    addq  %r10, %rax        # sum += ls->value
+    mrmovq  8(%rdi), %rdi   # ls = ls->next
+    jmp   loop              # repeat loop
+loop_end:
+    ret                     # return sum
+
+# 栈空间
+    .pos 0x200
+Stack:
