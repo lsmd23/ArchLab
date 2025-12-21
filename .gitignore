@@ -7,6 +7,9 @@ yis
 ## task 1
 sum.s
 sum.c
+## task 2
+rsum.c
+rsum.s
 
 # pipe
 pipe-std.c
