@@ -4,6 +4,9 @@ hcl2c
 yas
 yis
 
+# seq
+ssim
+
 # pipe
 pipe-std.c
 psim
