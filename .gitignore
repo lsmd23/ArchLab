@@ -7,4 +7,10 @@ yis
 # pipe
 pipe-std.c
 psim
+sdriver.yo
 sdriver.ys
+ldriver.yo
+ldriver.ys
+
+# y86-code
+archlab-handout/sim/y86-code/*.yo
