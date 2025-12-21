@@ -14,6 +14,9 @@ rsum.s
 copy.s
 copy.c
 
+# seq
+ssim
+
 # pipe
 pipe-std.c
 psim
