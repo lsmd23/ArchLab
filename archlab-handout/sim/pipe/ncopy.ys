@@ -16,7 +16,7 @@
 # Procedure registers info: 
 #  %rax - count of positive words
 # Remaining registers available for use:
-#  %r8-%r14, %rbx
+#  %r8-%r14, %rbx, %rbp, %rcx
 ncopy:
 
 ##################################################################
@@ -24,11 +24,11 @@ ncopy:
 	# Loop header
 	xorq %rax,%rax		# count = 0;
 	# andq %rdx,%rdx		# len <= 0?
-	iaddq $-8, %rdx		# len -= 8
+	iaddq $-9, %rdx		# len -= 10
 	jl Remainder 	# if so, goto Remainder
 
 Loop:
-	# apply the loop unrolling optimization with factor 8
+	# apply the loop unrolling optimization with factor 10
 	mrmovq (%rdi), %r8 		# read first val from src...
 	mrmovq 8(%rdi), %r9 	# read second val from src...
 	mrmovq 16(%rdi), %r10	# read third val from src...
@@ -37,6 +37,9 @@ Loop:
 	mrmovq 40(%rdi), %r13	# read sixth val from src...
 	mrmovq 48(%rdi), %r14	# read seventh val from src...
 	mrmovq 56(%rdi), %rbx	# read eighth val from src...
+	mrmovq 64(%rdi), %rcx	# read ninth val from src...
+	# mrmovq 72(%rdi), %rbp	# read tenth val from
+
 	rmmovq %r8, (%rsi) 		# ...store first to dst
 	rmmovq %r9, 8(%rsi) 	# ...store second to dst
 	rmmovq %r10, 16(%rsi)	# ...store third to dst
@@ -45,6 +48,9 @@ Loop:
 	rmmovq %r13, 40(%rsi)	# ...store sixth to dst
 	rmmovq %r14, 48(%rsi)	# ...store seventh to dst
 	rmmovq %rbx, 56(%rsi)	# ...store eighth to dst
+	rmmovq %rcx, 64(%rsi)	# ...store ninth to dst
+	# rmmovq %rbp, 72(%rsi)	# ...store tenth to dst
+
 	andq %r8, %r8		# val0 <= 0?
 	jle Npos0		# if so, goto Npos0:
 	iaddq $1, %rax 		# count++
@@ -77,44 +83,93 @@ Npos6:
 	jle Npos7		# if so, goto Npos7:
 	iaddq $1, %rax 		# count++
 Npos7:
+	andq %rcx, %rcx		# val8 <= 0?
+	jle Npos8		# if so, goto Npos8:
+	iaddq $1, %rax 		# count++
+Npos8:
+# 	andq %rbp, %rbp		# val9 <= 0?
+# 	jle Npos9		# if so, goto Npos9:
+# 	iaddq $1, %rax 		# count++
+# Npos9:
 	# Loop update
-	iaddq $64, %rdi		# src += 8 * 8
-	iaddq $64, %rsi		# dst += 8 * 8
-	iaddq $-8, %rdx		# len -= 8 * 4
+	iaddq $72, %rdi			# src += 8 * 10
+	iaddq $72, %rsi			# dst += 8 * 10
+	iaddq $-9, %rdx		# len -= 10
 	jge Loop		# if so, goto Loop:
+
+
+# Remainder:
+# 	# handle remaining elements, %rdx now is a number between -8 and -1
+# 	# iaddq $4, %rdx		# %rdx now is between -4 and 3
+# 	# jge Rem_High
+# 	addq %rdx, %rdx		
+# 	addq %rdx, %rdx		
+# 	addq %rdx, %rdx		
+
+# 	mrmovq JTab_End(%rdx), %r8
+# 	pushq %r8
+# 	ret
+
+# 	.align 8
+# JTab:
+# 	.quad Done # -80
+# 	.quad R1   # -72
+# 	.quad R2   # -64
+# 	.quad R3   # -56
+# 	.quad R4   # -48
+# 	.quad R5   # -40
+# 	.quad R6   # -32
+# 	.quad R7   # -24
+# 	.quad R8   # -16
+# 	.quad R9   # -8
+# JTab_End:
+
 Remainder:
-	# handle remaining elements, %rdx now is a number between -8 and -1
-	iaddq $4, %rdx		# %rdx now is between -4 and 3
-	jge Rem_High
+# rdx 范围: -9 (剩0) 到 -1 (剩8)
+    iaddq $5, %rdx          # 切割点 -4 (剩4)
+                            # <0 (-9..-5 -> 剩0..3)
+                            # =0 (-4     -> 剩4)
+                            # >0 (-3..-1 -> 剩5..8)
+    jl Rem_0_3
+    jg Rem_5_8              # 【修复】这里之前跳到了未定义的 Rem_High
+    je R4
 
-Rem_Low: # handle 0 to 3 remaining elements
-	iaddq $2, %rdx		# %rdx now is between -2 to 1
-	jge Rem_2_3
+Rem_0_3: # 处理 0, 1, 2, 3
+    iaddq $2, %rdx          # 切割点 -2 (剩2)
+    jl Rem_0_1              # <0 (-4..-3 -> 剩0,1)
+    je R2                   # =0 (-2     -> 剩2)
+    jg R3                   # >0 (-1     -> 剩3)
 
-	# handle 0 to 1 remaining elements
-	iaddq $1, %rdx		# %rdx now is between -1 to 0
-	jge R1
-	ret
+Rem_0_1: # 处理 0, 1
+    iaddq $1, %rdx          # 切割点 -1 (剩1)
+    je R1                   # =0 (-1 -> 剩1)
+    ret                     # <0 (-2 -> 剩0 -> Done)
 
-Rem_2_3: # handle 2 to 3 remaining elements
-	iaddq $-1, %rdx		# %rdx now is between -1 to 0
-	jge R3
-	jmp R2
+Rem_5_8: # 处理 5, 6, 7, 8
+    iaddq $-2, %rdx         # 此时 rdx 已在入口+5, 范围是 1..4
+                            # 1(剩5), 2(剩6), 3(剩7), 4(剩8)
+                            # 减2后: -1(剩5), 0(剩6), 1(剩7), 2(剩8)
+    jl R5
+    je R6
+    jg Rem_7_8
 
-Rem_High: # handle 4 to 7 remaining elements
-	iaddq $-2, %rdx		# %rdx now is between -2 to 1
-	jge Rem_6_7
+Rem_7_8: # 处理 7, 8
+    iaddq $-1, %rdx         # 1(剩7), 2(剩8) -> 减1 -> 0, 1
+    je R7
+    jmp R8
 
-Rem_4_5: # handle 4 to 5 remaining elements
-	iaddq $1, %rdx		# %rdx now is between -1 to 0
-	jge R5
-	jmp R4
-
-Rem_6_7: # handle 6 to 7 remaining elements
-	iaddq $-1, %rdx		# %rdx now is between -1 to 0
-	jge R7
-	jmp R6
-
+# R9: # handle 9th remaining element
+# 	mrmovq 64(%rdi), %r8
+# 	rmmovq %r8, 64(%rsi)
+# 	andq %r8, %r8
+# 	jle R8
+# 	iaddq $1, %rax
+R8: # handle 8th remaining element
+	mrmovq 56(%rdi), %r8
+	rmmovq %r8, 56(%rsi)
+	andq %r8, %r8
+	jle R7
+	iaddq $1, %rax
 R7: # handle 7th remaining element
 	mrmovq 48(%rdi), %r8
 	rmmovq %r8, 48(%rsi)
