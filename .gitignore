@@ -1,0 +1,10 @@
+# misc files
+hcl2c
+*.o
+yas
+yis
+
+# pipe
+pipe-std.c
+psim
+sdriver.ys
