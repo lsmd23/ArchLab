@@ -105,81 +105,73 @@ Rem_3_8: # rdx now ranges from 0 to 5
 
 Rem_6_8: # rdx now ranges from 0 to 2
 	iaddq $-1, %rdx         # rdx now ranges from -1 to 1
-	# mrmovq 40(%rdi), %r13
+	mrmovq 40(%rdi), %r13
 	jl R6 					# <0 (剩6)
-	# mrmovq 48(%rdi), %r14
+	mrmovq 48(%rdi), %r14
 	je R7					# =0 (剩7)
-	# mrmovq 56(%rdi), %rbx
+	mrmovq 56(%rdi), %rbx
 	jg R8					# >0 (剩8)
 
 Rem_3_5: # rdx now ranges from -3 to -1
 	iaddq $2, %rdx			# rdx now ranges from -1 to 1
-	# mrmovq 16(%rdi), %r10
+	mrmovq 16(%rdi), %r10
 	jl R3					# <0 (剩3)
-	# mrmovq 24(%rdi), %r11
+	mrmovq 24(%rdi), %r11
 	je R4					# =0 (剩4)
-	# mrmovq 32(%rdi), %r12
+	mrmovq 32(%rdi), %r12
 	jg R5					# >0 (剩5)
 
 Rem_0_2: # rdx now ranges from -3 to -1
     iaddq $2, %rdx          # rdx now ranges from -1 to 1
-	# mrmovq (%rdi), %r8
+	mrmovq (%rdi), %r8
     je R1              		# =0 (剩1)
-	# mrmovq 8(%rdi), %r9
+	mrmovq 8(%rdi), %r9
     jg R2                   # >0 (剩2)
     ret 					# 剩0，Done
 
 R8: # handle 8th remaining element
-	mrmovq 56(%rdi), %rbx
 	andq %rbx, %rbx
 	rmmovq %rbx, 56(%rsi)
-	# mrmovq 48(%rdi), %r14
+	mrmovq 48(%rdi), %r14
 	jle R7
 	iaddq $1, %rax
 R7: # handle 7th remaining element
-	mrmovq 48(%rdi), %r14
 	andq %r14, %r14
 	rmmovq %r14, 48(%rsi)
-	# mrmovq 40(%rdi), %r13	
+	mrmovq 40(%rdi), %r13	
 	jle R6
 	iaddq $1, %rax
 R6: # handle 6th remaining element
-	mrmovq 40(%rdi), %r13
 	andq %r13, %r13
 	rmmovq %r13, 40(%rsi)
-	# mrmovq 32(%rdi), %r12
+	mrmovq 32(%rdi), %r12
 	jle R5
 	iaddq $1, %rax
 R5: # handle 5th remaining element
-	mrmovq 32(%rdi), %r12
 	andq %r12, %r12
 	rmmovq %r12, 32(%rsi)
-	# mrmovq 24(%rdi), %r11
+	mrmovq 24(%rdi), %r11
 	jle R4
 	iaddq $1, %rax
 R4: # handle 4th remaining element
-	mrmovq 24(%rdi), %r11
 	andq %r11, %r11
 	rmmovq %r11, 24(%rsi)
-	# mrmovq 16(%rdi), %r10
+	mrmovq 16(%rdi), %r10
 	jle R3
 	iaddq $1, %rax
 R3: # handle 3rd remaining element
-	mrmovq 16(%rdi), %r10
 	andq %r10, %r10
 	rmmovq %r10, 16(%rsi)
-	# mrmovq 8(%rdi), %r9
+	mrmovq 8(%rdi), %r9
 	jle R2
 	iaddq $1, %rax
 R2: # handle 2nd remaining element
-	mrmovq 8(%rdi), %r9
 	andq %r9, %r9
 	rmmovq %r9, 8(%rsi)
-	# mrmovq (%rdi), %r8
+	mrmovq (%rdi), %r8
 	jle R1
 	iaddq $1, %rax
 R1: # handle 1st remaining element
-	mrmovq (%rdi), %r8
 	andq %r8, %r8
 	rmmovq %r8, (%rsi)
 	jle Done
