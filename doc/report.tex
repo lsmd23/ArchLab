@@ -1,0 +1,395 @@
+\documentclass[a4paper,12pt]{article}
+\usepackage[UTF8]{ctex}     % 支持中文
+\usepackage{geometry}       % 页面设置
+\usepackage{titlesec}       % 标题设置
+\usepackage{color}          % 颜色支持
+\usepackage{listings}       % 代码块支持
+\usepackage{graphicx}       % 图片支持
+\usepackage{float}          % 图片浮动位置
+\usepackage{hyperref}       % 超链接
+\usepackage{fancyhdr}       % 页眉页脚
+\usepackage{booktabs}       % 用于更漂亮的表格线
+\usepackage{amsmath}        % 用于数学公式
+\usepackage{array}          % 用于表格列宽调整
+\usepackage{subfigure}      % 用于子图排列
+
+% 页面边距设置
+\geometry{left=2.5cm,right=2.5cm,top=2.5cm,bottom=2.5cm}
+
+% 代码块样式设置
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=4
+}
+\lstset{style=mystyle}
+
+% 页眉页脚设置
+% \pagestyle{fancy}
+% \fancyhf{}
+% \lhead{计算机系统结构实验}
+% \rhead{ArchLab Part C 实验报告}
+\cfoot{\thepage}
+
+% 标题信息
+\title{\textbf{计算机组成原理 ArchLab 实验报告}}
+\author{\textbf{姓名}：李孙木铎 \quad \textbf{学号}：2023010304 \quad \textbf{班级}：软件31}
+
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\setcounter{page}{1}
+\section{实验简介}
+本实验旨在深入理解流水线 Y86-64 处理器的设计与实现，并通过优化基准程序和处理器架构来最大化性能。
+实验分为三个部分：Part A 熟悉 Y86-64 汇编编程；Part B 扩展 SEQ 模拟器以支持新指令 \texttt{iaddq}；
+Part C 则是实验的核心，通过修改 \texttt{ncopy.ys} 和 \texttt{pipe-full.hcl} 来优化流水线性能（CPE）。
+
+\section{Part A: Y86-64 汇编指令编程}
+
+\subsection{任务描述}
+Part A 要求实现三个简单的 Y86-64 程序，分别是：
+\begin{itemize}
+    \item \texttt{sum.ys}: 迭代计算链表元素之和。
+    \item \texttt{rsum.ys}: 递归计算链表元素之和。
+    \item \texttt{copy.ys}: 将源内存块复制到目标内存块，并计算 checksum（异或和）。
+\end{itemize}
+
+\subsection{实现思路}
+\begin{itemize}
+    \item 由于 Y86-64 指令集是一般 x86-64 的简化版本，也即 x86-64 的子集，因此可以参考 C 语言的实现逻辑，将其逐步翻译为汇编指令；
+    \item 可以调用gcc的汇编工具，将原本的 C 代码编译为 x86-64 汇编代码，分析关键逻辑部分的汇编实现；
+    \item 之后，结合 Y86-64 指令集的限制，进行相应的指令替换和逻辑调整，最终实现所需功能。
+\end{itemize}
+
+\subsection{实现细节}
+
+\subsubsection{\texttt{sum.ys} (迭代求和)}
+该程序实现了迭代版本的链表求和。
+\begin{itemize}
+    \item \textbf{参数传递}：链表头指针 \texttt{ls} 通过 \texttt{\%rdi} 传递。
+    \item \textbf{循环逻辑}：使用 \texttt{andq \%rdi, \%rdi} 检查当前节点是否为空。若非空，则读取 \texttt{(\%rdi)} 到临时寄存器并累加到 \texttt{\%rax}，然后更新 \texttt{\%rdi} 为 \texttt{8(\%rdi)}（即 \texttt{next} 指针），直到链表结束。
+    \item \textbf{栈空间与数据}：参考实验文档，将待测数据加载在数据段中，并按照规范合理调用主函数，分配栈空间。
+\end{itemize}
+\textbf{实验结果}：
+
+
+\subsubsection{\texttt{rsum.ys} (递归求和)}
+该程序实现了递归版本的链表求和。
+\begin{itemize}
+    \item \textbf{保存现场}：由于是递归调用，必须将 \texttt{val}（当前节点值）保存在被调用者保存寄存器（如 \texttt{\%rbx}）中，并在调用前将 \texttt{\%rbx} 压栈保存。
+    \item \textbf{递归逻辑}：
+        \begin{enumerate}
+            \item 若 \texttt{ls} 为空，直接跳转至返回 0 。
+            \item 否则，取出当前值存入 \texttt{\%rbx}，加载 \texttt{next} 指针到 \texttt{\%rdi}，调用 \texttt{call rsum\_list}。
+            \item 将两个值相加后存入返回值寄存器 \texttt{\%rax}，并恢复现场（弹出栈中的 \texttt{\%rbx}）。
+        \end{enumerate}
+\end{itemize}
+
+\subsubsection{\texttt{copy.ys} (块复制与 Checksum)}
+该程序实现了内存块复制及异或校验和计算。
+\begin{itemize}
+    \item \textbf{参数}：\texttt{src} (\texttt{\%rdi}), \texttt{dest} (\texttt{\%rsi}), \texttt{len} (\texttt{\%rdx})。
+    \item \textbf{常量加载}：由于 Y86-64 不支持直接的立即数加载，因此先使用 \texttt{irmovq} 将常量加载到闲置寄存器（如 \texttt{\%r8}）中备用。
+    \item \textbf{逻辑}：使用循环结构，每次从 \texttt{src} 读取一个字，写入 \texttt{dest}，并与 \texttt{\%rax} 进行异或运算。
+    之后，\texttt{src} 和 \texttt{dest} 指针增加 8，\texttt{len} 减 1。
+\end{itemize}
+
+\subsection{实验结果}
+三个程序经\texttt{yas}编译器和\texttt{yis}模拟器后，
+输出结果如\hyperref[fig:part_a_results]{图~\ref{fig:part_a_results}}所示：
+
+\begin{figure}[H]
+    \centering
+    \subfigure[sum.ys 运行结果]{
+        \includegraphics[width=0.5\textwidth]{images/sum.png}
+    }
+    \subfigure[rsum.ys 运行结果]{
+        \includegraphics[width=0.5\textwidth]{images/rsum.png}
+    }
+    \subfigure[copy.ys 运行结果]{
+        \includegraphics[width=0.5\textwidth]{images/copy.png}
+    }
+    \caption{Part A 三个程序的运行结果}
+    \label{fig:part_a_results}
+\end{figure}
+可见，最终 \texttt{\%rax} 中的值为 \texttt{0x0000000000000cba}，即链表元素之和（或内存块校验和）；
+且对内存块复制的结果，目的内存区的数据与源内存区一致，均符合预期。
+
+\section{Part B: 在 SEQ 处理器中实现 iaddq 指令}
+
+\subsection{任务描述}
+Part B 要求在顺序处理器（SEQ）的硬件描述语言 \texttt{seq-full.hcl} 中实现 \texttt{iaddq V, rB} 指令。
+该指令的功能是 \texttt{R[rB] $\leftarrow$ R[rB] + V}。由于 Y86-64 指令集中没有直接支持立即数加法的指令，
+因此实现该指令后，可以减少 \texttt{irmovq} 指令的使用频率，从而提升程序性能。
+
+\subsection{iaddq 指令逻辑分析}
+参考 CSAPP 练习题 4.3，\texttt{iaddq} 指令总长度为 10 字节，编码格式如下：
+\begin{itemize}
+    \item \textbf{指令编码}：\texttt{C 0}（1字节）;
+    \item \textbf{寄存器编码}：\texttt{F rB}（1字节，\texttt{rA} 字段无效，填 \texttt{F}）;
+    \item \textbf{立即数}：\texttt{V}（8字节，64位有符号整数）.
+\end{itemize}
+
+各阶段的计算逻辑如\hyperref[tab:iaddq_seq_logic]{表~\ref{tab:iaddq_seq_logic}}所示：
+\begin{table}[H]
+    \centering
+    \caption{SEQ处理器中iaddq指令在各个阶段的计算逻辑}
+    \label{tab:iaddq_seq_logic}
+    \renewcommand{\arraystretch}{1.5} % 增加行高，使公式不拥挤
+    \begin{tabular}{@{}ll@{}}
+        \toprule
+        \textbf{Stage} & \textbf{\texttt{iaddq V, rB}} \\ 
+        \midrule
+        \textbf{Fetch} & $\text{icode:ifun} \leftarrow M_1[\text{PC}]$ \\
+                       & $\text{rA:rB} \leftarrow M_1[\text{PC} + 1]$ \\
+                       & $\text{valC} \leftarrow M_8[\text{PC} + 2]$ \\
+                       & $\text{valP} \leftarrow \text{PC} + 10$ \\ 
+        \midrule
+        \textbf{Decode} & $\text{valB} \leftarrow R[\text{rB}]$ \\ 
+        \midrule
+        \textbf{Execute} & $\text{valE} \leftarrow \text{valB} + \text{valC}$ \\
+                         & $\text{Set CC}$ \\ 
+        \midrule
+        \textbf{Memory} &  \\ 
+        \midrule
+        \textbf{Write Back} & $R[\text{rB}] \leftarrow \text{valE}$ \\ 
+        \midrule
+        \textbf{PC Update} & $\text{PC} \leftarrow \text{valP}$ \\ 
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{HCL 实现细节}
+在 \texttt{seq-full.hcl} 中，我添加了 \texttt{IIADDQ} 到相应的控制信号集合中：
+\begin{lstlisting}[language=C]
+# Fetch Stage
+bool instr_valid = icode in { INOP, IHALT, ..., IIADDQ };
+bool need_regids = icode in { IRRMOVQ, ..., IIADDQ };
+bool need_valC   = icode in { IIRMOVQ, IRMMOVQ, IMRMOVQ, IIADDQ };
+
+# Decode Stage
+srcB = [
+    icode in { IOPQ, IRMMOVQ, IMRMOVQ, IIADDQ } : rB;
+    ...
+];
+dstE = [
+    icode in { IIRMOVQ, IOPQ, IIADDQ } : rB;
+    ...
+];
+
+# Execute Stage
+aluA = [
+    icode in { IIADDQ, IIRMOVQ, IMRMOVQ, IRMMOVQ } : valC;
+    ...
+];
+aluB = [
+    icode in { IIRMOWQ, IMRMOVQ, IOPQ, IIADDQ } : valB;
+    ...
+];
+set_cc = icode in { IOPQ, IIADDQ };
+\end{lstlisting}
+
+\subsection{测试验证}
+使用工具测试\texttt{iaddq}指令的正确性，并验证整个处理器的功能完整性。测试结果如\hyperref[fig:part_b_test]{图~\ref{fig:part_b_test}}所示：
+\begin{figure}[h]
+    \centering
+    \subfigure[验证标准指令集完整性]{
+        \includegraphics[width=0.6\textwidth]{images/testssim.png}
+    }
+    \subfigure[验证 iaddq 指令正确性]{
+        \includegraphics[width=0.6\textwidth]{images/testiaddq.png}
+    }
+    \caption{Part B iaddq 指令测试结果}
+    \label{fig:part_b_test}
+\end{figure}
+
+\section{Part C: 流水线处理器设计与代码性能优化}
+
+\subsection{任务描述}
+Part C 的目标首先是修改 \texttt{pipe-full.hcl}，使流水线处理器支持 \texttt{iaddq} 指令；
+其次是优化 \texttt{ncopy.ys} ，使其在复制内存块并统计正数个数时的性能（CPE, Cycles Per Element）最优。目标 CPE 为 7.50 以下。
+
+\subsection{优化策略分析}
+为了达到极致的性能，我主要采用了以下几种优化手段：
+
+\subsubsection{循环展开 (Loop Unrolling)}
+循环展开可以在一个循环中处理多个元素，提高寄存器利用率，进而提高指令级并行性，减少分支跳转带来的控制冒险。
+经分析可知，对15个寄存器，一共有11个寄存器可以用于并行进行内存加载和存储操作，因此最多可以展开到11路。
+但考虑后续的余数处理，选择8路或9路展开更为合适。
+
+% \subsubsection{指令调度与“三明治”写法 (Instruction Scheduling)}
+% 在PIPE中，加载-使用（Load-Use）冒险和控制冒险（Control Hazard）会向流水线引入气泡，降低性能。
+% \begin{itemize}
+%     \item \textbf{问题}：按处理逻辑，常规写法是 \texttt{mrmovq} $\rightarrow$ \texttt{andq} $\rightarrow$ \texttt{jle}。
+%     这会导致 \texttt{mrmovq} 和 \texttt{andq} 之间有一个由加载-使用冒险引入的气泡。
+%     \item \textbf{优化（三明治写法）}：调整指令顺序，将存储指令 \texttt{rmmovq} 插入到条件判断和跳转之间。
+%     \begin{lstlisting}
+% mrmovq (%rdi), %r8      # Load
+% andq %r8, %r8           # Check (Update CC)
+% rmmovq %r8, (%rsi)      # Store (Useful work acting as NOP for CC stability)
+% jle Npos                # Jump\end{lstlisting}
+%     这种 \texttt{Load} $\rightarrow$ \texttt{Check} $\rightarrow$ \texttt{Store} $\rightarrow$ \texttt{Jump} 的顺序，利用 \texttt{rmmovq} 不改变条件码的特性，完美掩盖了流水线气泡。
+% \end{itemize}
+
+\subsubsection{三叉树余数处理 (Ternary Tree Remainder Handling)}
+循环展开后，剩余元素（0-8个）的处理成为短数组性能的瓶颈。简单的线性查找效率太低。
+由于条件跳转指令可以基于比较结果跳转到三组不同的标签，因此可以设计一棵三叉搜索树来快速定位剩余长度的处理入口。
+（选择9路展开，对三叉树结构更为自然；如果选择8路展开，则需要构建深度为3的二叉树，复杂度更高。）
+基于 \texttt{iaddq} 判断余数大小，设计三叉搜索树：
+\begin{itemize}
+    \item 首先判断 \texttt{len < 3}，若是则跳转到处理 0-2 个元素的标签；
+    再判断 \texttt{len < 6}，若是则跳转到处理 3-5 个元素的标签；
+    否则跳转到处理 6-8 个元素的标签；
+    \item 对每个标签内，继续使用 \texttt{iaddq} 判断具体的剩余数量，并跳转到对应的单个处理块。
+    \item 对处理部分，采用倒序阶梯式处理，降低跳转指令的数量。
+\end{itemize}
+
+\subsubsection{预加载技术 (Pre-loading)}
+% 在余数处理的跳转树中，在\textbf{跳转发生之前}就提前执行 \texttt{mrmovq} 将下一层可能用到的数据加载到对应的寄存器中。
+\begin{itemize}
+    \item \textbf{问题}：由于加载-使用冒险，在加载指令\texttt{mrmovq} 后，紧接着使用该数据的指令（如 \texttt{andq}）会引入一个气泡。
+    \item \textbf{解决}：可以使用一个不影响条件码的指令（如 \texttt{je}）来填补这个气泡，从而保持流水线的连续性。
+    在余数处理的过程中，将所有的\texttt{mrmovq}指令都放在跳转指令之前，也即进行数据的预加载，就可以有效减少气泡的产生。
+    \item \textbf{效果}：只应用三叉树和循环展开，CPE 可降至约 7.65；
+    加入预加载后，CPE 进一步降至约 7.49，达到满分要求。
+\end{itemize}
+
+
+\subsubsection{瀑布流处理 (Waterfall Structure)}
+对于剩余元素的具体处理，构建了一个紧凑的阶梯式处理结构：
+每个处理块（RK）在处理完第 K 个元素后，会加载第 K-1 个元素到寄存器，
+之后代码会自然执行到下一个处理块（Handle K-1）。这个设计减少了跳转指令的使用，同时预防了加载-使用冒险。
+
+\subsection{代码实现概览}
+以下是 \texttt{ncopy.ys} 的核心代码片段：
+
+\begin{lstlisting}
+Loop:
+    # 9-way Unrolling with "Sandwich" Optimization
+    mrmovq (%rdi), %r8 
+    # ... (Load all 9 values) ...
+    mrmovq 64(%rdi), %rbx
+
+    rmmovq %r8, (%rsi)   # Store Val 0
+    # ... (Store all 9 values) ...
+    rmmovq %rbx, 72(%rsi) # Store Val
+
+Npos0:
+	andq %r8, %r8		# val0 <= 0?
+	jle Npos1		    # if so, goto Npos0:
+	iaddq $1, %rax 		# count++
+Npos1:
+    # ... (Repeat for all 9 values) ...
+Npos9:
+    # Loop update
+	iaddq $72, %rdi			# src += 8 * 10
+	iaddq $72, %rsi			# dst += 8 * 10
+	iaddq $-9, %rdx		    # len -= 10
+	jge Loop		        # if so, goto Loop:
+
+# Remainder Handling with Pre-loading
+Remainder:
+    iaddq $6, %rdx          # <0 (-9..-7 -> 剩0..2)
+    jl Rem_0_2
+
+Rem_3_8: # rdx now ranges from 0 to 5
+	iaddq $-3, %rdx         # <0 (0..2 -> 剩3..5)
+	jl Rem_3_5
+
+Rem_6_8: # rdx now ranges from 0 to 2
+	iaddq $-1, %rdx         # rdx now ranges from -1 to 1
+	mrmovq 40(%rdi), %r13
+	jl R6 					# <0 (剩6)
+	mrmovq 48(%rdi), %r14
+	je R7					# =0 (剩7)
+	mrmovq 56(%rdi), %rbx
+	jg R8					# >0 (剩8)
+# ... (Similar handling for Rem_3_5 and Rem_0_2) ...
+
+R8: # handle 8th remaining element
+	andq %rbx, %rbx
+	rmmovq %rbx, 56(%rsi)
+	mrmovq 48(%rdi), %r14
+	jle R7
+	iaddq $1, %rax
+# ... (Similar handling for R7, R6, R5, R4, R3, R2, R1) ...
+\end{lstlisting}
+
+\subsection{pipe-full.hcl 的修改}
+为了支持 \texttt{ncopy.ys} 中的优化，需在 \texttt{pipe-full.hcl} 中实现了 \texttt{iaddq} 指令。
+各流水线阶段的实现逻辑与关键 HCL 信号如\hyperref[tab:pipe_iaddq_logic]{表~\ref{tab:pipe_iaddq_logic}}所示：
+
+\begin{table}[h]
+    \centering
+    \caption{流水线模式下 iaddq 指令的各阶段实现逻辑与 HCL 信号}
+    \label{tab:pipe_iaddq_logic}
+    \renewcommand{\arraystretch}{1.5}
+    \begin{tabular}{@{}l p{6cm} l@{}}
+        \toprule
+        \textbf{Stage} & \textbf{Operation Logic} & \textbf{Key HCL Signals} \\ 
+        \midrule
+        \textbf{Fetch} & $\text{icode:ifun} \leftarrow M_1[\text{PC}]$ & \texttt{instr\_valid = 1} \\
+                       & $\text{rA:rB} \leftarrow M_1[\text{PC} + 1]$ & \texttt{need\_regids = 1} \\
+                       & $\text{valC} \leftarrow M_8[\text{PC} + 2]$ & \texttt{need\_valC = 1} \\
+                       & $\text{valP} \leftarrow \text{PC} + 10$ & \\ 
+        \midrule
+        \textbf{Decode} & $\text{valB} \leftarrow R[\text{rB}]$ & \texttt{d\_srcB = D\_rB} \\
+                        & $\text{dstE} \leftarrow \text{rB}$ & \texttt{d\_dstE = D\_rB} \\ 
+        \midrule
+        \textbf{Execute} & $\text{valE} \leftarrow \text{valB} + \text{valC}$ & \texttt{aluA = E\_valC} \\
+                         & $\text{Set CC}$ & \texttt{aluB = E\_valB} \\
+                         & & \texttt{alufun = ALUADD} \\
+                         & & \texttt{set\_cc = 1} \\ 
+        \midrule
+        \textbf{Memory} & \textit{No Operation} & \texttt{mem\_read = 0} \\
+                        & & \texttt{mem\_write = 0} \\ 
+        \midrule
+        \textbf{Write Back} & $R[\text{dstE}] \leftarrow \text{valE}$ & (\textit{Handled by pipeline}) \\ 
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{实验结果}
+编译构建 PIPE 处理器，经过正确性测试和性能测试，最终结果如\hyperref[fig:part_c_result]{图~\ref{fig:part_c_result}}所示：
+\begin{figure}[h]
+    \centering
+    \subfigure[正确性测试结果]{
+        \includegraphics[width=0.8\textwidth]{images/correctness.png}
+    }
+    \subfigure[性能测试结果]{
+        \includegraphics[width=0.8\textwidth]{images/mark.png}
+    }
+    \label{fig:part_c_result}
+    \caption{Part C 正确性与性能测试结果}
+\end{figure}
+且程序编译后字节长度为967字节，符合实验要求。
+
+\section{总结}
+\begin{itemize}
+    \item 通过 Y86-64 汇编编程，更深入地理解了汇编语言与底层计算机体系结构的关系，同时熟悉了Y86-64指令集的特点与限制。
+    \item 通过在 SEQ 处理器中实现 \texttt{iaddq} 指令，理解了处理器实现指令集的基本流程与关键技术，并了解了硬件描述语言 HCL 的使用。
+    \item 通过在 PIPE 处理器中实现 \texttt{iaddq} 指令，理解了 PIPE 处理器流水线设计的特点和原理，并掌握了流水线处理器中的指令实现方法。
+    \item 通过对 \texttt{ncopy.ys} 的优化，深入理解了流水线处理器中的性能瓶颈与优化策略，掌握了循环展开、指令调度、预加载等底层优化技术。
+\end{itemize}
+\end{document}

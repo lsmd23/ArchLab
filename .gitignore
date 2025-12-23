@@ -28,3 +28,10 @@ ncopy.yo
 
 # y86-code
 archlab-handout/sim/y86-code/*.yo
+
+# doc
+*.aux
+*.log
+*.out
+*.toc
+*.gz
